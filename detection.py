@@ -8,7 +8,10 @@ from utils import calculate_ear, calculate_mar, calculate_head_tilt
 import pandas as pd
 from datetime import datetime
 import threading
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 import os
 
 # ── Absolute paths (safe regardless of CWD) ──────────────────────────────────
@@ -54,7 +57,7 @@ def get_pts(landmarks, indices, img_w, img_h):
 # ── Sound ─────────────────────────────────────────────────────────────────────
 def play_alarm_sound():
     try:
-        if os.path.exists(ALARM_PATH):
+        if winsound is not None and os.path.exists(ALARM_PATH):
             winsound.PlaySound(ALARM_PATH, winsound.SND_FILENAME)
     except Exception as e:
         print(f"Alarm error: {e}")
