@@ -331,25 +331,62 @@ def render_logs():
         log_placeholder.error(f"Log error: {e}")
 
 # ── Camera loop ───────────────────────────────────────────────────────────────
+# ── Input source selection ───────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("---")
+    st.markdown("### 📹 Input Source")
+    input_source = st.radio(
+        "Select video source:",
+        ("Live Webcam", "Upload Video"),
+        index=0
+    )
+
+import tempfile
+import os
+
 import detection as _det
 _det.EYE_CLOSE_ALARM_SECONDS = eye_alarm_secs   # apply sidebar setting
 detector = DrowsinessDetector(ear_thresh, mar_thresh, tilt_thresh)
 
-cap = cv2.VideoCapture(0)
-if not cap.isOpened():
-    st.error("❌ Cannot open webcam. Please check your camera connection and re-run.")
-    st.stop()
+cap = None
+is_webcam = False
+temp_path = None
 
-cam_placeholder.info("📸 Starting camera…")
+if input_source == "Live Webcam":
+    cap = cv2.VideoCapture(0)
+    is_webcam = True
+    if not cap.isOpened():
+        st.error("❌ Cannot open webcam. If you are running on a cloud server like Streamlit Cloud, please select 'Upload Video' in the sidebar.")
+        st.stop()
+else:
+    uploaded_file = st.sidebar.file_uploader("Upload a driving video (.mp4, .avi, .mov)", type=["mp4", "avi", "mov"])
+    if uploaded_file is not None:
+        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        tfile.write(uploaded_file.read())
+        temp_path = tfile.name
+        tfile.close()
+        cap = cv2.VideoCapture(temp_path)
+    else:
+        st.info("ℹ️ Please upload a driving video in the sidebar to run the detection demo.")
+        st.stop()
+
+cam_placeholder.info("📸 Starting feed…")
 
 try:
     while True:
         ret, frame = cap.read()
         if not ret:
-            cam_placeholder.error("❌ Lost connection to webcam.")
-            break
+            if not is_webcam:
+                # Loop video back to start
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                continue
+            else:
+                cam_placeholder.error("❌ Lost connection to webcam.")
+                break
 
-        frame = cv2.flip(frame, 1)
+        if is_webcam:
+            frame = cv2.flip(frame, 1)
+
         processed_frame, status, ear, mar, tilt = detector.process_frame(frame)
         rgb_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
 
@@ -369,4 +406,10 @@ try:
 except Exception as e:
     st.error(f"Runtime error: {e}")
 finally:
-    cap.release()
+    if cap is not None:
+        cap.release()
+    if temp_path is not None and os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
